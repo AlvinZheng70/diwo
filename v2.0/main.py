@@ -12,10 +12,12 @@ def initialize_population(N0, lambd, x, jobs):
         raise ValueError("Argument lambd is illegal!")
     if x > len(jobs) or x < 0:
         raise ValueError("Argument x is illegal!")
+
     POP = []
     pi1 = np.argsort(np.sum(jobs, axis=1))  # 按总处理时间非递减的顺序排序
     k = 0
     min_cmax = float('inf')
+
     while k < x:
         pi = np.zeros_like(pi1)
         pi[0] = pi1[k]
@@ -38,6 +40,8 @@ def initialize_population(N0, lambd, x, jobs):
             U.remove(min_idx)
             pi[i] = min_idx
             i += 1
+
+        # 插入评估
         pi2 = pi[:len(pi) - lambd].copy()
         for q in range(len(pi) - lambd, len(pi)):
             best_pos, cmax = find_the_best_pos(pi2, pi[q], jobs)
@@ -54,21 +58,31 @@ def initialize_population(N0, lambd, x, jobs):
 
 
 def find_the_best_pos(seq, to_be_inserted, jobs):
-    d = np.zeros((len(seq) + 1, len(jobs[0])))
-    min_makespan = float('inf')
-    min_idx = None
-    for pos in range(len(seq) + 1):
-        if pos != 0:
-            # seq[pos-1]已确定，填入数组d
-            implement_one_line_of_d(d, jobs, pos - 1, seq[pos - 1])
-        # to_be_inserted 放置在位置pos上
-        temp_seq = np.insert(seq, pos, to_be_inserted)
-        for i in range(pos, len(temp_seq)):
-            implement_one_line_of_d(d, jobs, i, temp_seq[i])
-        if d[len(seq)][len(jobs[0]) - 1] < min_makespan:
-            min_makespan = d[len(seq)][len(jobs[0]) - 1]
-            min_idx = pos
-    return min_idx, min_makespan
+    m = len(jobs[0])
+    n = len(seq)  # 待插入序列的长度
+
+    # 计算待插入序列的离开时间矩阵和尾部时间矩阵
+    d = np.zeros((n, m))
+    f = np.zeros((n, m))
+    for i in range(n):
+        implement_one_line_of_d(d, jobs, i, seq[i])
+        implement_one_line_of_f(f, jobs, n - i - 1, seq[n - i - 1])
+
+    d0 = np.zeros(m)
+    cmax = []
+    for pos in range(n + 1):
+        if pos == 0:
+            for j in range(m):
+                d0[j] = jobs[to_be_inserted][j] + (d0[j - 1] if j != 0 else 0)
+        else:
+            for j in range(m):
+                d0[j] = max(jobs[to_be_inserted][j] + (d0[j - 1] if j != 0 else d[pos - 1][0]),
+                            d[pos - 1][j + 1] if j != len(jobs[0]) - 1 else 0)
+        if pos != n:
+            cmax.append(np.max(d0 + f[pos]))
+        else:
+            cmax.append(d0[m - 1])
+    return cmax.index(min(cmax)), min(cmax)
 
 
 def implement_one_line_of_d(d, jobs, i, implemented):
@@ -77,8 +91,20 @@ def implement_one_line_of_d(d, jobs, i, implemented):
             d[0][j] = jobs[implemented][j] + (d[0][j - 1] if j != 0 else 0)
     else:
         for j in range(len(jobs[0])):
+            # max(上一个机器的离开时间+这一个机器的持续时间，上一个工件在下一个机器的离开时间)
             d[i][j] = max(jobs[implemented][j] + (d[i][j - 1] if j != 0 else d[i - 1][0]),
                           d[i - 1][j + 1] if j != len(jobs[0]) - 1 else 0)
+
+
+def implement_one_line_of_f(f, jobs, i, implemented):
+    m = len(jobs[0])
+    if i == len(f) - 1:
+        for j in range(m - 1, -1, -1):
+            f[i][j] = jobs[implemented][j] + (f[i][j + 1] if j != m - 1 else 0)
+    else:
+        for j in range(m - 1, -1, -1):
+            f[i][j] = max(jobs[implemented][j] + (f[i][j + 1] if j != m - 1 else f[i + 1][j]),
+                          f[i + 1][j - 1] if j != 0 else 0)
 
 
 def calculate_fitness(pi_i, pi_worst, pi_best, cost_function, S_max, S_min, jobs, epsilon=sys.float_info.epsilon):
@@ -212,7 +238,6 @@ def random_insertion_space_spread(POP, S_min, S_max, sigma_min, sigma_max, pi_be
             POP_prime.append(pi_prime)
     return POP_prime
 
-
 def shuffle_local_search(pi, pi_r, jobs):
     """
     参考局部搜索
@@ -305,16 +330,21 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost
     POP = sorted(POP, key=lambda x: cost_function(x, jobs))
     while True:
         # 空间扩散
+        t_zero = time.time()
         POP_prime = random_insertion_space_spread(POP, Smin, Smax, sigma_min, sigma_max, POP[0],
                                                   POP[len(POP) - 1],
                                                   POP[int(len(POP) / 2)], t0, tmax, jobs, cost_function)
+        t_one = time.time()
         # 指向同一个对象
         for i in range(len(POP_prime)):
             if random.random() < pls:
                 pi_prime = shuffle_local_search(POP_prime[i], POP[0], jobs)  # 局部搜索过程
                 POP_prime[i] = pi_prime
+        t_two = time.time()
         POP = competition_exclusion(POP, POP_prime, Pmax, jobs)
+        t_three = time.time()
         k += 1
+        # print(t_one-t_zero,t_two-t_one,t_three-t_two)
         # 判断是否满足终止准则
         if time.time() - t0 >= tmax:
             break
@@ -324,7 +354,7 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost
 seedData = generator.SeedData().get_seeds(20, 5)
 jobs, LB = generator.generate_processing_times(seedData[0], 5, 20)
 
-print(calculate_cost((2, 16, 14, 7, 8, 5, 4, 13, 15, 6, 10, 12, 17, 18, 0, 3, 1, 9, 19, 11), jobs))
+# print(calculate_cost([ 2, 16, 15,  5, 13, 19, 11, 10,  4,  9,  6,  7,  8, 14, 12,  0, 18, 3,  1, 17], jobs))
 # 0 <= sigma_min <= sigma_max <= len(jobs)
 result = DIWO(Pmax=10,
               Smin=0,
