@@ -3,6 +3,11 @@ import numpy as np
 import random
 import time
 
+from matplotlib import pyplot as plt
+
+import generator
+
+
 def initialize_population(N0, lambd, x, jobs):
     # 条件检查
     if lambd > len(jobs) or lambd < 0:
@@ -13,7 +18,6 @@ def initialize_population(N0, lambd, x, jobs):
     POP = []
     pi1 = np.argsort(np.sum(jobs, axis=1))  # 按总处理时间非递减的顺序排序
     k = 0
-    min_cmax = float('inf')
 
     while k < x:
         pi = np.zeros_like(pi1)
@@ -42,10 +46,11 @@ def initialize_population(N0, lambd, x, jobs):
         for q in range(len(pi) - lambd, len(pi)):
             best_pos, cmax = find_the_best_pos(pi2, pi[q], jobs)
             pi2 = np.insert(pi2, best_pos, pi[q])
-            if q == len(pi) and cmax < min_cmax:
-                min_cmax = cmax
-                POP = [pi2]
+        if all((pi2 != existing_pi).any() for existing_pi in POP):
+            POP.append(pi2)
         k += 1
+    POP = sorted(POP, key=lambda y: calculate_cost(y, jobs))  # 根据完成时间对任务进行排序
+
     while len(POP) < N0:
         pi = np.random.permutation(len(jobs))
         if all((pi != existing_pi).any() for existing_pi in POP):
@@ -179,14 +184,14 @@ def compute_sigma_i_k(pi_i, pi_worst, pi_median, cost_function, sigma_max, sigma
 
 
 def generate_di(sigma_i_k, sigma_max, sigma_min, jobs):
-    '''
+    """
     生成随机扩散时移除的序列长度
     :param sigma_i_k: 该个体在某个时间点对应的标准差
     :param sigma_max:
     :param sigma_min:
     :param jobs:
     :return: 移除的序列长度
-    '''
+    """
     # 根据标准差生成长度
     di = int(np.floor(abs(np.random.normal(0, sigma_i_k))))
 
@@ -233,6 +238,54 @@ def random_insertion_space_spread(POP, S_min, S_max, sigma_min, sigma_max, pi_be
                 pi_prime = np.insert(pi_prime, best_pos, pi_R[k])
             POP_prime.append(pi_prime)
     return POP_prime
+
+
+def local_search(pi, pi_r, jobs):
+    pi_r = pi_r.copy()
+    n = len(pi)  # 排列长度，也即总工件数
+    cntr = 0
+    j = -1
+    while cntr < n:
+        j = (j + 1) % n
+        index_to_remove = np.where(pi == pi_r[j])[0]
+        pi_prime = np.delete(pi, index_to_remove)
+        best_pos, cmax = find_the_best_pos(pi_prime, pi_r[j], jobs)
+        if calculate_cost(pi, jobs) > cmax:
+            pi = np.insert(pi_prime, best_pos, pi_r[j])
+            cntr = 0
+        else:
+            cntr += 1
+    d = np.zeros((len(jobs), len(jobs[0])))
+    blocking_time = np.zeros(len(jobs))
+    for i in range(len(jobs)):
+        implement_one_line_of_d(d, jobs, i, pi[i])
+    for i in range(len(jobs)):
+        for j in range(len(jobs[0])):
+            x = d[i][j - 1] if j != 0 else (d[i - 1][0] if i != 0 else 0)
+            blocking_time[i] += d[i][j] - x - jobs[pi[i]][j]
+    max_jobs = sorted(range(len(blocking_time)), key=lambda i: blocking_time[i], reverse=True)[:5]
+    mask = np.isin(pi, max_jobs)
+    pi_left = pi[~mask]
+    for element in max_jobs:
+        index_to_insert = np.random.randint(0, len(pi_left) + 1)  # 随机选择插入位置
+        pi_left = np.insert(pi_left, index_to_insert, element)
+    pi = pi_left
+    pi_r = pi_r.copy()
+    n = len(pi)  # 排列长度，也即总工件数
+    cntr = 0
+    j = -1
+    while cntr < n:
+        j = (j + 1) % n
+        index_to_remove = np.where(pi == pi_r[j])[0]
+        pi_prime = np.delete(pi, index_to_remove)
+        best_pos, cmax = find_the_best_pos(pi_prime, pi_r[j], jobs)
+        if calculate_cost(pi, jobs) > cmax:
+            pi = np.insert(pi_prime, best_pos, pi_r[j])
+            cntr = 0
+        else:
+            cntr += 1
+    return pi
+
 
 def shuffle_local_search(pi, pi_r, jobs):
     """
@@ -334,7 +387,7 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost
         # 指向同一个对象
         for i in range(len(POP_prime)):
             if random.random() < pls:
-                pi_prime = shuffle_local_search(POP_prime[i], POP[0], jobs)  # 局部搜索过程
+                pi_prime = local_search(POP_prime[i], POP[0], jobs)  # 局部搜索过程
                 POP_prime[i] = pi_prime
         t_two = time.time()
         POP = competition_exclusion(POP, POP_prime, Pmax, jobs)
@@ -345,6 +398,7 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost
         if time.time() - t0 >= tmax:
             break
     return POP[0]  # 返回最佳个体
+
 
 '''
 seedData = generator.SeedData().get_seeds(20, 5)
@@ -361,8 +415,9 @@ result = DIWO(Pmax=10,
               jobs=jobs,
               lambd=10,
               x=5,
-              tmax=30 * 60,
+              tmax=30*60,
               cost_function=calculate_cost)
 print(result)
 print(calculate_cost(result, jobs))
+
 '''

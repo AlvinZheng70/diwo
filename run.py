@@ -62,7 +62,7 @@ def evolution_algorithm(params):
     runs_per_instance = 1
     for i in range(runs_per_instance):
         result = main.DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost_function)
-        data_handle(params, result, main.calculate_cost(result, jobs), version='2.0')
+        data_handle(params, result, main.calculate_cost(result, jobs), version='局部搜索更改')
         print(n, '\t', m, '\t', seed, '\t', result, '\t', main.calculate_cost(result, jobs))
 
 
