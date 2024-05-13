@@ -382,22 +382,20 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost
     POP = sorted(POP, key=lambda x: cost_function(x, jobs))
     while True:
         # 空间扩散
-        t_zero = time.time()
+
         POP_prime = random_insertion_space_spread(POP, Smin, Smax, sigma_min, sigma_max, POP[0],
                                                   POP[len(POP) - 1],
                                                   POP[int(len(POP) / 2)], t0, tmax, jobs, cost_function)
-        t_one = time.time()
+
         # 指向同一个对象
         for i in range(len(POP_prime)):
             if random.random() < pls:
                 pi_prime = local_search(POP_prime[i], POP[0], jobs)  # 局部搜索过程
                 POP_prime[i] = pi_prime
-        t_two = time.time()
+
         POP = competition_exclusion(POP, POP_prime, Pmax, jobs)
-        t_three = time.time()
+       
         k += 1
-        # print(t_one-t_zero,t_two-t_one,t_three-t_two)
-        # 判断是否满足终止准则
         if time.time() - t0 >= tmax:
             break
     return POP[0]  # 返回最佳个体
