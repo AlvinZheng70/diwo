@@ -52,4 +52,4 @@ pi_best = [2, 16, 8, 13, 10, 5, 4, 17, 3, 9, 6, 11, 18, 14, 7, 15, 0, 1, 12, 19]
 # print(jobs[pi_best,:])
 
 
-# draw_schedule(jobs, pi_best)
+draw_schedule(jobs, pi_best)

@@ -255,36 +255,40 @@ def local_search(pi, pi_r, jobs):
             cntr = 0
         else:
             cntr += 1
-    d = np.zeros((len(jobs), len(jobs[0])))
-    blocking_time = np.zeros(len(jobs))
-    for i in range(len(jobs)):
-        implement_one_line_of_d(d, jobs, i, pi[i])
-    for i in range(len(jobs)):
-        for j in range(len(jobs[0])):
-            x = d[i][j - 1] if j != 0 else (d[i - 1][0] if i != 0 else 0)
-            blocking_time[i] += d[i][j] - x - jobs[pi[i]][j]
-    max_jobs = sorted(range(len(blocking_time)), key=lambda i: blocking_time[i], reverse=True)[:5]
+    pi_temp = pi.copy()
+
+    max_jobs = random.sample(range(0, n), int(n / 10))
+
     mask = np.isin(pi, max_jobs)
     pi_left = pi[~mask]
+
     for element in max_jobs:
         index_to_insert = np.random.randint(0, len(pi_left) + 1)  # 随机选择插入位置
         pi_left = np.insert(pi_left, index_to_insert, element)
+
     pi = pi_left
     pi_r = pi_r.copy()
     n = len(pi)  # 排列长度，也即总工件数
+
     cntr = 0
     j = -1
     while cntr < n:
         j = (j + 1) % n
+        # print(n,j)
         index_to_remove = np.where(pi == pi_r[j])[0]
         pi_prime = np.delete(pi, index_to_remove)
+        # print(pi_prime,pi_r[j])
         best_pos, cmax = find_the_best_pos(pi_prime, pi_r[j], jobs)
         if calculate_cost(pi, jobs) > cmax:
             pi = np.insert(pi_prime, best_pos, pi_r[j])
             cntr = 0
         else:
             cntr += 1
-    return pi
+
+    if (calculate_cost(pi, jobs) > calculate_cost(pi_temp, jobs)):
+        return pi_temp;
+    else:
+        return pi
 
 
 def shuffle_local_search(pi, pi_r, jobs):
@@ -361,7 +365,6 @@ def competition_exclusion(POP, POP_prime, P_max, jobs):
             j += 1
     return POP_result
 
-
 def distance(pi1, pi2):
     """
     检查两个个体的相似性
@@ -400,7 +403,6 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost
     return POP[0]  # 返回最佳个体
 
 
-'''
 seedData = generator.SeedData().get_seeds(20, 5)
 jobs, LB = generator.generate_processing_times(seedData[0], 5, 20)
 
@@ -419,5 +421,3 @@ result = DIWO(Pmax=10,
               cost_function=calculate_cost)
 print(result)
 print(calculate_cost(result, jobs))
-
-'''
