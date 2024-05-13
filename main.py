@@ -402,22 +402,3 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost
             break
     return POP[0]  # 返回最佳个体
 
-
-seedData = generator.SeedData().get_seeds(20, 5)
-jobs, LB = generator.generate_processing_times(seedData[0], 5, 20)
-
-# print(calculate_cost([ 2, 16, 15,  5, 13, 19, 11, 10,  4,  9,  6,  7,  8, 14, 12,  0, 18, 3,  1, 17], jobs))
-# 0 <= sigma_min <= sigma_max <= len(jobs)
-result = DIWO(Pmax=10,
-              Smin=0,
-              Smax=7,
-              sigma_min=5,
-              sigma_max=10,
-              pls=0.15,
-              jobs=jobs,
-              lambd=10,
-              x=5,
-              tmax=30*60,
-              cost_function=calculate_cost)
-print(result)
-print(calculate_cost(result, jobs))
