@@ -1,6 +1,4 @@
 import sys
-
-import Levenshtein
 import numpy as np
 import random
 import time
@@ -10,92 +8,49 @@ from matplotlib import pyplot as plt
 import generator
 
 
-def beam_search_constructive_heuristic(jobs, x, a):
-    # Step 1: Initial Order
-    m = len(jobs[0])
-    n = len(jobs)
-    # Calculate xi_j for all jobs
-    xi = np.zeros(n)
-    for i in range(n):
-        # Calculate weighted idle time w_j
-        w_j = sum(np.sum(jobs[i, :j]) / j for j in range(1, m)) * m
-        # Calculate xi_j
-        xi[i] = (n - 2) / 4 * w_j + np.sum(jobs[i, :])
-    # Get initial order alpha
-    alpha = np.argsort(xi)
-    S = {l: [alpha[l]] for l in range(x)}  # selected nodes集合
-    U = {l: {job for job in range(n) if job not in S[l]} for l in range(x)}  # 记录结点对应的未被选择的工件
-    F = {l: 0 for l in range(x)}  # 结点的F index记录
-    departure_time = {}
-    for l in range(x):
-        departure_time[l] = np.zeros(m)
-        for j in range(m):
-            departure_time[l][j] = jobs[alpha[l]][j] + (departure_time[l][j - 1] if j != 0 else 0)
-    delta_idle_time = {l: 0 for l in range(x)}
-    delta_blocking_time = {l: 0 for l in range(x)}
+def initialize_population(N0, lambd, x, jobs):
+    # 条件检查
+    if lambd > len(jobs) or lambd < 0:
+        raise ValueError("Argument lambd is illegal!")
+    if x > len(jobs) or x < 0:
+        raise ValueError("Argument x is illegal!")
 
-    # Steps 2-5: Iterate over each job position
-    candidates_blocking_time = {}
-    candidates_idle_time = {}
-    candidates_departure_time = {}
-    for k in range(1, n - 1):  # k也表征selected nodes序列长度
-        # Step 2-3: Candidate Nodes Creation and Evaluation
-        G = {}
-        for l in range(x):
-            for v in U[l]:
-                # calculate the sequence (l + v)
-                d_l_v = np.zeros(m)
-                for j in range(m):
-                    d_l_v[j] = max(jobs[v][j] + (d_l_v[j - 1] if j != 0 else departure_time[l][0]),
-                                   departure_time[l][j + 1] if j != m - 1 else 0)
-                candidates_departure_time[(l, v)] = d_l_v
-                e_l_v = np.roll(d_l_v, 1)
-                e_l_v[0] = departure_time[l][0]
-                candidates_blocking_time[(l, v)] = sum((d_l_v - jobs[v] - e_l_v)[:m - 1])
-                candidates_idle_time[(l, v)] = sum(max(0, x) for x in (np.roll(d_l_v, 1) - departure_time[l])[1:])
-                G[(l, v)] = F[l] + a * (
-                        candidates_idle_time[(l, v)] + candidates_blocking_time[(l, v)]) + \
-                            candidates_departure_time[(l, v)][m - 1]
-
-        # Step 4: Candidate Nodes Selection
-        best_candidates = np.array([k for k, v in sorted(G.items(), key=lambda item: item[1])])[:x]
-
-        # Step 5: Forecasting Phase
-        new_delta_idle_time = {l: 0 for l in range(x)}
-        new_delta_blocking_time = {l: 0 for l in range(x)}
-        new_S = {}
-        for idx, (l, q) in enumerate(best_candidates):
-            new_S[idx] = S[l][:]
-            new_S[idx].append(q)
-            new_delta_blocking_time[idx] = delta_blocking_time[l] + candidates_blocking_time[(l, q)] * (n - k - 2) / n
-            new_delta_idle_time[idx] = delta_idle_time[l] + candidates_idle_time[(l, q)] * (n - k - 2) / n
-            set_jobs = U[l].copy()
-            set_jobs.remove(q)
-            artificial_job = np.mean(jobs[list(set_jobs), :], axis=0)
-            d_artificial_job = np.zeros(m)
-            for j in range(m):
-                d_artificial_job[j] = max(
-                    artificial_job[j] + (d_artificial_job[j - 1] if j != 0 else candidates_departure_time[(l, q)][0]),
-                    candidates_departure_time[(l, q)][j + 1] if j != m - 1 else 0)
-            new_delta_departure_time = candidates_departure_time[(l, q)][m - 1] + d_artificial_job[m - 1]
-            departure_time[idx] = candidates_departure_time[(l, q)]
-            F[idx] = new_delta_departure_time + a * (new_delta_blocking_time[idx] + new_delta_idle_time[idx])
-        for l in range(x):
-            S[l] = new_S[l]
-            U[l] = {job for job in range(n) if job not in S[l]}
-            delta_idle_time[l] = new_delta_idle_time[l]
-            delta_blocking_time[l] = new_delta_blocking_time[l]
-    for l in range(x):
-        S[l].append(list(U[l])[0])
     POP = []
-    for i in range(x):
-        POP.append(np.array(S[i]))
+    pi1 = np.argsort(np.sum(jobs, axis=1))  # 按总处理时间非递减的顺序排序
+    k = 0
+
+    while k < x:
+        pi = np.zeros_like(pi1)
+        pi[0] = pi1[k]
+        U = set(range(len(jobs)))
+        U.remove(pi1[k])
+        i = 1
+        d = np.zeros((len(jobs), len(jobs[0])))
+        while U:
+            # 循环内确定位置i，首先完善位置i-1的离开时间
+            implement_one_line_of_d(d, jobs, i - 1, pi[i - 1])
+            # 测试U中的各个工件
+            min_idle_blocking_time = float('inf')
+            min_idx = None
+            for j in U:
+                implement_one_line_of_d(d, jobs, i, j)
+                sum_idle_blocking = np.sum(d[i] - d[i - 1] - jobs[j])
+                if sum_idle_blocking < min_idle_blocking_time:
+                    min_idle_blocking_time = sum_idle_blocking
+                    min_idx = j
+            U.remove(min_idx)
+            pi[i] = min_idx
+            i += 1
+        # 插入评估
+        pi2 = pi[:len(pi) - lambd].copy()
+        for q in range(len(pi) - lambd, len(pi)):
+            best_pos, cmax = find_the_best_pos(pi2, pi[q], jobs)
+            pi2 = np.insert(pi2, best_pos, pi[q])
+        if all((pi2 != existing_pi).any() for existing_pi in POP):
+            POP.append(pi2)
+        k += 1
     POP = sorted(POP, key=lambda y: calculate_cost(y, jobs))  # 根据完成时间对任务进行排序
-    return POP
 
-
-def initialize_population(N0, x, a, jobs):
-    POP = beam_search_constructive_heuristic(jobs, x, a)[:5]
     while len(POP) < N0:
         pi = np.random.permutation(len(jobs))
         if all((pi != existing_pi).any() for existing_pi in POP):
@@ -103,7 +58,7 @@ def initialize_population(N0, x, a, jobs):
     return POP
 
 
-def find_the_best_pos(seq, to_be_inserted, a, jobs):
+def find_the_best_pos(seq, to_be_inserted, jobs):
     m = len(jobs[0])
     n = len(seq)  # 待插入序列的长度
 
@@ -113,18 +68,9 @@ def find_the_best_pos(seq, to_be_inserted, a, jobs):
     for i in range(n):
         implement_one_line_of_d(d, jobs, i, seq[i])
         implement_one_line_of_f(f, jobs, n - i - 1, seq[n - i - 1])
-    blocking_idle_time = np.zeros((n, m))
-    blocking_idle_time_reverse = np.zeros((n, m))
-    for i in range(1, n):
-        for j in range(m):
-            blocking_idle_time[i][j] = d[i][j] - jobs[seq[i]][j] - d[i - 1][j] + blocking_idle_time[i - 1][j]
-    for i in range(n - 2,-1,-1):
-        for j in range(m):
-            # 往右记 右边的浪费
-            blocking_idle_time_reverse[i][j] = f[i][j] - jobs[seq[i]][j] - f[i + 1][j] + blocking_idle_time_reverse[i + 1][j]
+
     d0 = np.zeros(m)
-    b1 = np.zeros(m)
-    sum_cmax_b_i = []
+    cmax = []
     for pos in range(n + 1):
         if pos == 0:
             for j in range(m):
@@ -134,66 +80,10 @@ def find_the_best_pos(seq, to_be_inserted, a, jobs):
                 d0[j] = max(jobs[to_be_inserted][j] + (d0[j - 1] if j != 0 else d[pos - 1][0]),
                             d[pos - 1][j + 1] if j != len(jobs[0]) - 1 else 0)
         if pos != n:
-            makespan = np.max(d0 + f[pos])
+            cmax.append(np.max(d0 + f[pos]))
         else:
-            makespan = d0[m - 1]
-        if pos == 0:
-            for j in range(m):
-                b1[j] = 0
-        else:
-            for j in range(m):
-                b1[j] = d0[j] - d[pos - 1][j] - jobs[to_be_inserted][j]
-        wasted = np.sum(b1) + (np.sum(blocking_idle_time[pos - 1]) if pos != 0 else 0) + \
-                 (np.sum(blocking_idle_time_reverse[pos]) if pos != n else 0) + \
-                 (np.sum(makespan - f[pos] - d0) if pos != n else 0)
-        sum_cmax_b_i.append(makespan + a*wasted)
-    return sum_cmax_b_i.index(min(sum_cmax_b_i))
-
-
-def find_the_best_pos_for_local_search(seq, to_be_inserted, level, jobs):
-    m = len(jobs[0])
-    n = len(seq)  # 待插入序列的长度
-
-    # 计算待插入序列的离开时间矩阵和尾部时间矩阵
-    d = np.zeros((n, m))
-    f = np.zeros((n, m))
-    for i in range(n):
-        implement_one_line_of_d(d, jobs, i, seq[i])
-        implement_one_line_of_f(f, jobs, n - i - 1, seq[n - i - 1])
-
-    d0 = np.zeros(m)
-    best_pos = None
-    min_cmax = float('inf')
-    for pos in range(n + 1):
-        should_continue = False
-        sum_d_f = 0
-        if pos == 0:
-            for j in range(m):
-                d0[j] = jobs[to_be_inserted][j] + (d0[j - 1] if j != 0 else 0)
-                sum_d_f_j = d0[j] + f[pos][j]
-                if sum_d_f_j >= level:
-                    should_continue = True
-                    break
-                if sum_d_f_j > sum_d_f:
-                    sum_d_f = sum_d_f_j
-            if should_continue:
-                continue
-        else:
-            for j in range(m):
-                d0[j] = max(jobs[to_be_inserted][j] + (d0[j - 1] if j != 0 else d[pos - 1][0]),
-                            d[pos - 1][j + 1] if j != len(jobs[0]) - 1 else 0)
-                sum_d_f_j = d0[j] + (f[pos][j] if pos != n else 0)
-                if sum_d_f_j >= level:
-                    should_continue = True
-                    break
-                if sum_d_f_j > sum_d_f:
-                    sum_d_f = sum_d_f_j
-            if should_continue:
-                continue
-        if sum_d_f < min_cmax:
-            min_cmax = sum_d_f
-            best_pos = pos
-    return best_pos, min_cmax
+            cmax.append(d0[m - 1])
+    return cmax.index(min(cmax)), min(cmax)
 
 
 def implement_one_line_of_d(d, jobs, i, implemented):
@@ -344,7 +234,7 @@ def random_insertion_space_spread(POP, S_min, S_max, sigma_min, sigma_max, pi_be
             pi_prime = np.delete(pi, sorted_indices)
             pi_R = sorted(pi_R, key=lambda x: sum(jobs[x]))
             for k in range(di):
-                best_pos= find_the_best_pos(pi_prime, pi_R[k], 0.1, jobs)
+                best_pos, cmax = find_the_best_pos(pi_prime, pi_R[k], jobs)
                 pi_prime = np.insert(pi_prime, best_pos, pi_R[k])
             POP_prime.append(pi_prime)
     return POP_prime
@@ -359,7 +249,7 @@ def local_search(pi, pi_r, jobs):
         j = (j + 1) % n
         index_to_remove = np.where(pi == pi_r[j])[0]
         pi_prime = np.delete(pi, index_to_remove)
-        best_pos, cmax = find_the_best_pos_for_local_search(pi_prime, pi_r[j], jobs)
+        best_pos, cmax = find_the_best_pos(pi_prime, pi_r[j], jobs)
         if calculate_cost(pi, jobs) > cmax:
             pi = np.insert(pi_prime, best_pos, pi_r[j])
             cntr = 0
@@ -388,7 +278,7 @@ def local_search(pi, pi_r, jobs):
         index_to_remove = np.where(pi == pi_r[j])[0]
         pi_prime = np.delete(pi, index_to_remove)
         # print(pi_prime,pi_r[j])
-        best_pos, cmax = find_the_best_pos_for_local_search(pi_prime, pi_r[j], jobs)
+        best_pos, cmax = find_the_best_pos(pi_prime, pi_r[j], jobs)
         if calculate_cost(pi, jobs) > cmax:
             pi = np.insert(pi_prime, best_pos, pi_r[j])
             cntr = 0
@@ -420,8 +310,8 @@ def shuffle_local_search(pi, pi_r, jobs):
             j = (j + 1) % n
             index_to_remove = np.where(pi == pi_r[j])[0]
             pi_prime = np.delete(pi, index_to_remove)
-            best_pos, cmax = find_the_best_pos_for_local_search(pi_prime, pi_r[j], calculate_cost(pi, jobs), jobs)
-            if best_pos is not None:  # 找到更优的解
+            best_pos, cmax = find_the_best_pos(pi_prime, pi_r[j], jobs)
+            if calculate_cost(pi, jobs) > cmax:
                 pi = np.insert(pi_prime, best_pos, pi_r[j])
                 cntr = 0
             else:
@@ -464,7 +354,7 @@ def competition_exclusion(POP, POP_prime, P_max, jobs):
     while len(POP_result) < P_max and j < len(sorted_POP_double_prime):
         flag = True
         for pi in POP_result:
-            if distance(pi, sorted_POP_double_prime[j])<(len(jobs)/10):
+            if distance(pi, sorted_POP_double_prime[j]) == 0:
                 flag = False
                 break
         if flag:
@@ -474,7 +364,6 @@ def competition_exclusion(POP, POP_prime, P_max, jobs):
             j += 1
     return POP_result
 
-
 def distance(pi1, pi2):
     """
     检查两个个体的相似性
@@ -482,11 +371,11 @@ def distance(pi1, pi2):
     :param pi2:
     :return: 两个个体相似性的量化指标
     """
-    return Levenshtein.distance(pi1, pi2)
+    return sum(1 for i in range(len(pi1)) if pi1[i] != pi2[i])
 
 
-def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, x, a, tmax, cost_function):
-    POP = initialize_population(Pmax, x, a, jobs)
+def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, lambd, x, tmax, cost_function):
+    POP = initialize_population(Pmax, lambd, x, jobs)
     k = 1
     t0 = time.time()
     POP = sorted(POP, key=lambda x: cost_function(x, jobs))
@@ -495,35 +384,23 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, x, a, tmax, cost_fun
         POP_prime = random_insertion_space_spread(POP, Smin, Smax, sigma_min, sigma_max, POP[0],
                                                   POP[len(POP) - 1],
                                                   POP[int(len(POP) / 2)], t0, tmax, jobs, cost_function)
+
         # 指向同一个对象
         for i in range(len(POP_prime)):
             if random.random() < pls:
-                pi_prime = shuffle_local_search(POP_prime[i], POP[0], jobs)  # 局部搜索过程
+                pi_prime = local_search(POP_prime[i], POP[0], jobs)  # 局部搜索过程
                 POP_prime[i] = pi_prime
+
         POP = competition_exclusion(POP, POP_prime, Pmax, jobs)
-        print(calculate_cost(POP[0], jobs))
         k += 1
+
         if time.time() - t0 >= tmax:
             break
     return POP[0]  # 返回最佳个体
 
-
-seedData = generator.SeedData().get_seeds(50, 10)
-jobs, LB = generator.generate_processing_times(seedData[0], 10, 50)
-
-result = DIWO(Pmax=10,
-              Smin=0,
-              Smax=7,
-              sigma_min=5,
-              sigma_max=10,
-              pls=0.15,
-              jobs=jobs,
-              x=20,
-              a=13,
-              tmax=30 * 60,
-              cost_function=calculate_cost)
 # print(calculate_cost([ 2, 16, 15,  5, 13, 19, 11, 10,  4,  9,  6,  7,  8, 14, 12,  0, 18, 3,  1, 17], jobs))
 # 0 <= sigma_min <= sigma_max <= len(jobs)
 
-# print(result)
-# print(calculate_cost(result, jobs))
+#print(result)
+#print(calculate_cost(result, jobs))
+
