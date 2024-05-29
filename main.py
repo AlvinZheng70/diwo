@@ -146,6 +146,8 @@ def find_the_best_pos(seq, to_be_inserted, a, jobs):
         wasted = np.sum(b1) + (np.sum(blocking_idle_time[pos - 1]) if pos != 0 else 0) + \
                  (np.sum(blocking_idle_time_reverse[pos]) if pos != n else 0) + \
                  (np.sum(makespan - f[pos] - d0) if pos != n else 0)
+        if pos == n:
+            wasted += np.sum(makespan-d0-f[n-1])
         sum_cmax_b_i.append(makespan + a*wasted)
     return sum_cmax_b_i.index(min(sum_cmax_b_i))
 
@@ -312,7 +314,7 @@ def generate_di(sigma_i_k, sigma_max, sigma_min, jobs):
 
 
 def random_insertion_space_spread(POP, S_min, S_max, sigma_min, sigma_max, pi_best, pi_worst, pi_median, t0, tmax, jobs,
-                                  cost_function):
+                                  cost_function,b):
     """
     基于随机插入的空间扩散算法
     :param jobs:
@@ -344,7 +346,7 @@ def random_insertion_space_spread(POP, S_min, S_max, sigma_min, sigma_max, pi_be
             pi_prime = np.delete(pi, sorted_indices)
             pi_R = sorted(pi_R, key=lambda x: sum(jobs[x]))
             for k in range(di):
-                best_pos= find_the_best_pos(pi_prime, pi_R[k], 0.1, jobs)
+                best_pos= find_the_best_pos(pi_prime, pi_R[k], b, jobs)
                 pi_prime = np.insert(pi_prime, best_pos, pi_R[k])
             POP_prime.append(pi_prime)
     return POP_prime
@@ -485,7 +487,7 @@ def distance(pi1, pi2):
     return Levenshtein.distance(pi1, pi2)
 
 
-def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, x, a, tmax, cost_function):
+def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, x, a, b,tmax, cost_function):
     POP = initialize_population(Pmax, x, a, jobs)
     k = 1
     t0 = time.time()
@@ -494,7 +496,7 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, x, a, tmax, cost_fun
         # 空间扩散
         POP_prime = random_insertion_space_spread(POP, Smin, Smax, sigma_min, sigma_max, POP[0],
                                                   POP[len(POP) - 1],
-                                                  POP[int(len(POP) / 2)], t0, tmax, jobs, cost_function)
+                                                  POP[int(len(POP) / 2)], t0, tmax, jobs, cost_function,b)
         # 指向同一个对象
         for i in range(len(POP_prime)):
             if random.random() < pls:
@@ -518,8 +520,9 @@ result = DIWO(Pmax=10,
               sigma_max=10,
               pls=0.15,
               jobs=jobs,
-              x=20,
-              a=13,
+              x=15,
+              a=12,
+              b=0.1,
               tmax=30 * 60,
               cost_function=calculate_cost)
 # print(calculate_cost([ 2, 16, 15,  5, 13, 19, 11, 10,  4,  9,  6,  7,  8, 14, 12,  0, 18, 3,  1, 17], jobs))

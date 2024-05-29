@@ -48,7 +48,7 @@ def draw_schedule(jobs, pi):
 
 seedData = generator.SeedData().get_seeds(50, 10)
 jobs, LB = generator.generate_processing_times(seedData[0], 10, 50)
-pi_best = np.random.permutation(len(jobs))
+pi_best = list(range(50))
 # print(jobs[pi_best,:])
 
 
