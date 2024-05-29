@@ -503,13 +503,13 @@ def DIWO(Pmax, Smin, Smax, sigma_min, sigma_max, pls, jobs, x, a, b,tmax, cost_f
                 pi_prime = shuffle_local_search(POP_prime[i], POP[0], jobs)  # 局部搜索过程
                 POP_prime[i] = pi_prime
         POP = competition_exclusion(POP, POP_prime, Pmax, jobs)
-        print(calculate_cost(POP[0], jobs))
+        # print(calculate_cost(POP[0], jobs))
         k += 1
         if time.time() - t0 >= tmax:
             break
     return POP[0]  # 返回最佳个体
 
-
+'''
 seedData = generator.SeedData().get_seeds(50, 10)
 jobs, LB = generator.generate_processing_times(seedData[0], 10, 50)
 
@@ -524,7 +524,7 @@ result = DIWO(Pmax=10,
               a=12,
               b=0.1,
               tmax=30 * 60,
-              cost_function=calculate_cost)
+              cost_function=calculate_cost)'''
 # print(calculate_cost([ 2, 16, 15,  5, 13, 19, 11, 10,  4,  9,  6,  7,  8, 14, 12,  0, 18, 3,  1, 17], jobs))
 # 0 <= sigma_min <= sigma_max <= len(jobs)
 
