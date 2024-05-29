@@ -466,7 +466,7 @@ def competition_exclusion(POP, POP_prime, P_max, jobs):
     while len(POP_result) < P_max and j < len(sorted_POP_double_prime):
         flag = True
         for pi in POP_result:
-            if distance(pi, sorted_POP_double_prime[j])<(len(jobs)/10):
+            if distance(pi, sorted_POP_double_prime[j])==0:
                 flag = False
                 break
         if flag:

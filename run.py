@@ -90,7 +90,7 @@ if __name__ == '__main__':
                 jobs_tuples.extend((n, m, seed) for seed in seeds)'''
     # 参数列表
     params_list = [{'Pmax': 10, 'Smin': 0, 'Smax': 7, 'sigma_min': 0, 'sigma_max': 5,
-                    'pls': 0.15, 'tuple': jobs_tuple, 'a': 12, 'x': 15, 'b': 0.1, 'tmax': 10,
+                    'pls': 0.15, 'tuple': jobs_tuple, 'a': 12, 'x': 15, 'b': 0.1, 'tmax': 30*60,
                     'cost_function': main.calculate_cost}
                    for jobs_tuple in jobs_tuples]
 
